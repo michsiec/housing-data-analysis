@@ -1,6 +1,7 @@
 # Housing Data Analysis using R
-Coursework project based on undertaking an analysis of a real world dataset (housing data). 
+Coursework project based on undertaking an analysis of a real world dataset (housing data) using R language. 
 
+## Overview
 The scope of the project includes:
 * Organising and cleaning the data
   * subsetting the data into specific data subset allocated
@@ -14,7 +15,7 @@ The scope of the project includes:
  * Planning and building second model for the variable urban indicator (urban.ind)
  
  
- Metadata:
+ ## Metadata:
 | Column Name     | Column Description |
 | ----------- | ----------- |
 | Rooms      | Number of rooms |
@@ -29,4 +30,4 @@ The scope of the project includes:
 | Distance | Distance from Commercial Business District (CBD) |
 | PropertyCount | Number of properties that exist in the suburb |
 | ID | Property identifier |
-| urban.ind | Is property within 10 miles of the CBD? |
+| urban.ind | Is property within 10 miles of the CBD? 1 - Yes, 0 - No |
