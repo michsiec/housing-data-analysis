@@ -1,0 +1,950 @@
+---
+title: "Housing Data Analysis"
+author: "Michal Sieczkos"
+date: "8/08/2022"
+output: html_notebook
+version: 1.0
+---
+
+# 0. Loading Required Libraries 
+```{r}
+library(ggplot2) 
+library(validate) 
+library(tidyverse)
+library(dplyr)
+library(dlookr)
+library(tree)
+```
+
+
+
+
+
+# 1. Organise and clean the data
+
+## 1.1 Subset the data into the specific dataset allocated
+```{r}
+SIDoffset <- 24
+load("houses-analysis.Rda")
+
+# Now subset the data set
+# Pick every 25th observation starting from your offset
+# Put into your data frame named mydf (you can rename it)
+houses <- houses.analysis2[seq(from=SIDoffset,to=nrow(houses.analysis2),by=25),]
+
+# remove houses.analysis2 as only an intermediate step
+rm(houses.analysis2)
+```
+
+
+
+
+
+
+## 1.2 Data quality analysis
+Data quality is a pivotal step when considering data analysis that refers to the ability of a set of data to serve an intended purpose.
+It is crucial since even ingenious and thorough analysis of corrupt, biased or wrong data will not protect the data scientist from undertaking a misleading analysis, than can ultimately lead to incorrect results that lack sense, which can be really problematic. Raw data files may have a lot of errors, including wrong data types, wrong category labels, unexpected or unknown values etc. 
+
+In order to assess the quality of the data, I would start with ensuring that the data frame is correct, meaning that I would check whether the data attributes are of correct type, and compliant with the data description. 
+
+The next step would be to check the general data properties, such as checking the dimensions, labels, ranges of values, as well as frequency tables. Such procedures will help me gain initial insight into the data to look for some possible errors, such as outliers and incorrect values.
+
+Finally, the last step would be to check for the missing values in the data, and decide on the way in which they should be handled.
+
+
+```{r}
+# Examining the first 6 rows to get an initial insight into the data frame
+head(houses)
+```
+
+
+
+```{r}
+# Following chunk of code checks whether the names and amount of variables are correct
+names(houses)
+```
+
+
+
+```{r}
+# Checking the dimensions of the data set, as well as the data types 
+str(houses)
+```
+
+
+
+It can be seen that the variable *Rooms* is an integer variable, which is correct in this case. Thus no further action is necessary.
+
+* *Type* is a character variable, which is not wrong, although for the purpose of the analysis it would be beneficial to convert it to the factor type. Such operation will be performed in further stage of the analysis.
+
+* *Price* is a numeric variable, which is correct, meaning that no further actions will be taken.
+
+* *Bedrooms* is of numeric type, although for the purpose of the analysis it should be converted to integer since it can only have discrete values.
+
+* *Bathroom* variable is a numeric variable, similarly as above, it should be converted to the integer type.
+
+* *Car* variable is of numeric type, and as well as the previous two variables, will be converted to the integer type.
+
+* *Landsize* is a numeric variable, which is correct and will not be changed.
+
+* *BuildingArea* is numerical, and it does not require any changes.
+
+* *YearBuilt* is of numeric type, though it should be changed to integer type.
+
+* *Distance* is a numeric variable, which is correct in this case.
+
+* *PropertyCount* is numerical, although since the number of properties can only have discrete values, it will be changed to integer type,
+
+* *ID* is a numeric variable, which does not seem to be correct since it should be categorical. That is why it will be converted to character type.
+
+* *urban.ind* is of numeric type, although it is a mistake since it is a binary variable that indicates whether the property is within 10 miles of the commercial business district, and for that reason it will be changed to factor.
+
+
+Moreover, in order to follow the principles of literate programming, the variable *Propertycount* should be renamed to *PropertyCount*.
+
+
+```{r}
+# For the purpose of gaining an overview of each variable and check the attributes ranges, I have used the summary() function
+summary(houses)
+```
+From the summary() output it has been noticed that variables *BuildingArea* and *YearBuilt* have a lot of NA values, what could mean that our data set is incomplete, what in result could be problematic when building a model in further stages.
+
+
+
+According to data description, property ID should be unique for each property, therefore it has been checked using table() function.
+```{r}
+# Checking whether each value in ID is unique using table() and unique() functions
+table(unique(houses$ID) > 1)
+```
+Since the data set has 295 observations, it has been confirmed that each property has an unique ID.
+
+
+In order to search for unusual values in the columns, frequency table for the values has been implemented. Moreover, it is possible to see the ranges of the variables more closely, which could be helpful in identifying eventual outliers.
+```{r}
+# Following chunk of code prints the frequency table for each variable in the data set
+sapply(houses, table)
+```
+
+Some oddities have been spotted when analysing the output above, such as negative or zero values in *Bathroom* variable, zero bedrooms in one of the observations (it is very unlikely that a house would have no bedrooms), a *BuildingArea* of 0, as well as an unusual *YearBuilt* values of 123 and 2220. 
+
+Also, the one of the values of h comes with a space, which in result is being treated like a different category. What could also raise suspicions is the fact that *Landsize* variable contains a lot of zeroes, what could indicate data set incompleteness.
+
+
+
+
+
+
+## 1.3 Data cleaning  
+
+Data cleaning is an essential part of statistical analysis. Oftentimes it is more time-consuming than the statistical analysis itself. It is very rare to spot a raw data that is completely correct in terms of format, labels, completeness, and without errors (De Jonge and Van der Loo 2013). Right undertaking the data cleaning task may be highly beneficial for the statistical analysis, as it leads to better decisions and results. 
+
+After assessing the data quality, some issues have been spotted regarding the values of the variables:
+
+* In order to maintain the principles of literate programming, variable *Propertycount* should be renamed to *PropertyCount*.
+
+* Variables *Bedroom*, *Bathrooms*, *Car*, *YearBuilt* and *PropertyCount* should be changed to integer type since they can only represent discrete values.
+
+* Variable *Type* should be changed from character to factor data type for the purpose of statistical analysis. Similarly, *urban.ind* should be changed to factor since it represents information as binary values (0 or 1).
+
+* *ID* is numerical, although since it stores the property identification number, it should be changed to character (categorical) type. The uniqueness of the variable has been checked and confirmed in the section 1.2.  
+
+* The variable *Bedrooms* contains the value of 0 in one of the observations, which is incorrect and should be corrected in an appropriate way.
+
+* *Bathroom* variable contains values of *-1* and *0*, which are not realistic.
+
+* One of the observations in *BuildingArea* has the value of zero, which is unrealistic and thus should be addressed. What is also suspicious is the highest value equal to 475, because the second largest value is 360, what could suggest that such value is an outlier.
+
+* Variables *YearBuilt* and *BuildingArea* have a lot of NA values (104 and 126, respectively).  
+
+* Attribute *Landsize* has large amount of zeroes (46).
+
+
+In general, it is considered good practice to store the input data for each stage of the analysis, in case something would go wrong, that is why the data set has been duplicated. The original dataset will be renamed to *houses_raw*, and the further data cleaning operations will be performed on the *houses_raw* data set instead.
+
+```{r}
+# Duplicating and renaming the data set
+houses_raw <- houses
+```
+
+
+
+Before moving to correcting the mistakes, the variable *Propertycount* has been renamed.
+```{r}
+# Renaming the column by using rename() function from the {dplyr} library
+houses <- rename(houses, "PropertyCount" = "Propertycount")
+```
+```{r}
+names(houses)
+```
+
+
+
+In the next step the variables have been corrected in terms of data types.
+```{r}
+# Changing the data type to integer
+houses$Bathroom <- as.integer(houses$Bathroom)
+
+houses$Bedrooms <- as.integer(houses$Bedrooms)
+
+houses$Car <- as.integer(houses$Car)
+
+houses$YearBuilt <- as.integer(houses$YearBuilt)
+
+houses$PropertyCount <- as.integer(houses$PropertyCount)
+```
+
+```{r}
+# Changing the data type to character
+houses$ID <- as.character(houses$ID)
+```
+
+```{r}
+# Changing the data type to factor
+houses$Type <- as.factor(houses$Type)
+
+houses$urban.ind <- as.factor(houses$urban.ind)
+```
+
+```{r}
+str(houses)
+```
+
+
+
+
+Next, the value of "h " with the unnecessary space in the *mydf$Type* column has been corrected:
+
+```{r}
+# Getting index of the incorrectly labeled observation
+which(houses$Type == "h ") # 41st observation
+
+# Correcting the value
+houses$Type[houses$Type == "h "] <- "h"
+```
+
+```{r}
+# Checking whether it has been corrected successfully
+houses$Type[41]
+
+table(houses$Type)
+```
+
+```{r}
+# In this chunk of code, droplevels() function has been used to drop obsolete level after cleaning the factor
+houses$Type <- droplevels(houses$Type)
+
+# Checking whether dropping the level is accomplished
+table(houses$Type)
+```
+
+
+After successfully correcting the factor, the next step would be to address the incorrect values in *Bedrooms*, *Bathroom*, and *BuildingArea*.   
+
+First thing that needs to be done is determining the indices the incorrect values have.
+```{r}
+which(houses$Bedrooms == 0)
+```
+```{r}
+which(houses$Bathroom == 0)
+```
+
+As seen above, the 18th observation in the data set has both number of bedrooms and bathrooms equal to 0. In that case, further investigating the observation would be a good way to determine the action that should be taken in order to correct those errors.
+```{r}
+# Viewing the whole row
+View(houses[18,])
+```
+
+
+After investigating the whole row, more oddities have been spotted, such as *BuildingArea* and *YearBuilt* values marked as NA. That being the case, it has been decided that such observation will not be useful in further steps of the analysis, therefore it has been removed from the data set.
+```{r}
+# Removing the 18th observation from the data set
+houses <- houses[-18,]
+houses
+```
+Now the data set have 294 observations.
+
+
+Moving forward, a *BuildingArea* value in one of the observations have been found to be equal to 0, which is obviously not correct, so the value has to be corrected.
+
+As before, I have started by finding the index of the observation
+```{r}
+which(houses$BuildingArea == 0)
+```
+
+Then, the whole row has been investigated
+```{r}
+houses[292,]
+```
+
+After analysing the whole observation, it has been decided that median imputation will be applied since the variable is an integer and it is desired to preserve more information for further analysis.
+```{r}
+# Replace the value of 0 by using median imputation
+houses$BuildingArea[292] <- 114
+
+houses[292,]
+```
+
+
+Moving on, it has turned out that *Landsize* variable has large amount of values that are equal to zero.
+Again, by using which() function I have found the indices of the values. 
+```{r}
+which(houses$Landsize == 0)
+```
+There are 46 observations that have the value of zero. Considering different data cleaning operations that could be undertaken in order to handle such values, every possible solutions comes with some risk. If the rows were to be dropped, we would end up with even smaller data set for model building, what could be problematic and lead to invalid model. On the other hand, if we were to impute some predefined values, e.g. replace zeroes with NA, or median imputation that could preserve the estimate of central tendency, although at the same time it could deflate the estimate of variance. 
+
+I have decided to ignore the values. Even though these values could greatly influence my further analysis and there is a chance that the values are not missing at random, after eyeballing the data I have assumed that there is no specific pattern, in which values of zero occur, so this is just a nature of the data.
+
+
+
+The next error that needs to be addressed is the negative value of *Bathroom*. 
+```{r}
+# Checking the index of the incorrect value
+which(houses$Bathroom == -1)
+```
+
+
+In order to choose an approach in which such error should be dealt with, I have viewed the whole observation.
+```{r}
+# Viewing the whole observation
+View(houses[80,])
+```
+
+
+
+After gaining insight into the whole row, it could be assumed that the error might be due to inserting the minus sign accidentally, therefore a decision has been made to correct the value from *-1* to *1*.
+```{r}
+# Correcting the value
+houses$Bathroom[80] <- 1
+
+# Checking whether the value has been corrected
+houses[80,]
+```
+
+
+Another errors that need to be corrected are the outliers in *YearBuilt*, which have values of 123 and 2220 respectively. In order to choose a method in which the outliers should be dealt with, it is worth checking the range of the values in detail, what has been done in the code chunk below.    
+```{r}
+head(sort(houses$YearBuilt, decreasing = F))
+
+head(sort(houses$YearBuilt, decreasing = T))
+```
+
+
+The output shows that the next earliest value of *YearBuilt* is 1880, and the semi-last value is 2017. Since it could be misleading for the analysis to try to drop the observations, or replace the values with NA, I have decided to manually correct the values, based on the range. In order to achieve that, I have assumed that the incorrect values occurred due to error when inputting the data. 
+Therefore, taking into consideration the first value of 123 and the range of *YearBuilt*, there is only one sensible approach to correct the value, and that is to replace the value with *1923*, since no other number is really possible to be added to match the range of the values. 
+
+Moving on to the second extreme value, there is also only one possible way to correct the value, and that is to replace the value of 2220 with 2020. 
+```{r}
+# Checking the index of the outlier
+which(houses$YearBuilt == 123)
+
+# Manual correction of the value
+houses$YearBuilt[houses$YearBuilt == 123] <- 1923
+
+# Checking the index of the second outlier
+which(houses$YearBuilt == 2220)
+
+# Manually correcting the error
+houses$YearBuilt[houses$YearBuilt == 2220] <- 2020
+
+```
+
+
+Finally, an attempt has been made to address the NA values in the *BuildingArea* and *YearBuilt* variables.
+```{r}
+which(is.na(houses$YearBuilt))
+
+which(is.na(houses$BuildingArea))
+
+# Checking which observations have NA in both BuildingArea and YearBuilt
+which(is.na(houses$BuildingArea | houses$YearBuilt))
+```
+As seen in the code chunk above, a lot of values in both variables are NA, 103 for *YearBuilt*, and 125 for *BuildingArea*. Removing such amount of observations from the data set could be harmful for the further analysis, and imputing that amount of values could potentially deflate the estimate of the variance. I have decided to move forward with the analysis, because even though those values are missing, the observations still contain information stored in different attributes that could benefit the analysis.
+
+
+
+
+
+
+# 2. Exploratory Data Analysis (EDA)
+
+## 2.1 EDA plan
+EDA aims to explore the main characteristics of a data set usually by using visual techniques.
+A good approach to start Exploratory Data Analysis would be to "get a feel" of the data and eyeball it in order to search for possible patterns, or spot eventual data quality problems.
+
+The next step would be to choose a suitable way of analysing each variable based on the data types (e.g. numeric or categorical).
+
+Next, an attempt would be made to generate some questions, and try to answer them by creating visualisations, transformations, and modelling the data (Grolemund and Wickham 2018).
+
+Then, I would search for eventual outliers in the data, check the covariance and correlations between variables by using different summary statistic and plots.
+
+
+## 2.2 EDA and summary of results  
+
+*Undertake and summarise the findings of your data exploration, particularly with respect to the research questions.  Use appropriate summary statistics (uni- and multi-variate) and visualisations. (10 marks)*
+
+
+To start the EDA, I have used summary() function once again to have a look at the preprocessed data.
+```{r}
+summary(houses)
+```
+As seen above, there are 10 continuous and 3 categorical attributes.
+
+
+
+I have started the analysis with continuous variables. For every continuous variable, histograms, density plots and quantile-quantile plots have been created to analyse the distribution of the values. Also, each continuous variable has been tested for skewness and kurtosis, in order to check the symmetry of the data and eventual outliers.
+
+*Rooms*:
+```{r}
+# Histogram
+hist(houses$Rooms, xlab = "Number of Rooms", main = "Histogram of Number of Rooms" )
+
+# Density plot
+rooms_den <- density(houses$Rooms)
+
+plot(rooms_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$Rooms)
+qqline(houses$Rooms, col = "orange", lwd = 2)
+
+# Skewness
+skewness(houses$Rooms)
+
+
+# Kurtosis
+kurtosis(houses$Rooms)
+
+```
+The distribution looks skewed, the value of skew indicates that we have a positive skewness. Positive value of kurtosis means that the distribution is leptokurtic (pointy).
+
+
+
+*Bedrooms*:
+```{r}
+# Histogram
+hist(houses$Bedrooms, xlab = "Number of Bedrooms", main = "Histogram of Number of Bedrooms" )
+
+# Density plot
+bedrooms_den <- density(houses$Bedrooms)
+
+plot(bedrooms_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$Bedrooms)
+qqline(houses$Bedrooms, col = "orange", lwd = 2)
+
+# Skewness
+skewness(houses$Bedrooms)
+
+
+# Kurtosis
+kurtosis(houses$Bedrooms)
+```
+In this case, the distribution is not normal although the value of skew that indicates skewness to the right is small. Positive value of kurtosis means that the distribution is leptokurtic. 
+
+
+*Bathroom*:
+```{r}
+# Histogram
+hist(houses$Bathroom, xlab = "Number of Bathrooms", main = "Histogram of Number of Bathrooms" )
+
+# Density plot
+bathrooms_den <- density(houses$Bathroom)
+
+plot(bathrooms_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$Bathroom)
+qqline(houses$Bathroom, col = "orange", lwd = 2)
+
+# Skewness
+skewness(houses$Bathroom)
+
+
+# Kurtosis
+kurtosis(houses$Bathroom)
+```
+The most common number of bathrooms in houses is 1, that is why the distribution is once again positively skewed, and has a positive kurtosis.
+
+
+*Car*:
+```{r}
+# Histogram
+hist(houses$Car, xlab = "Number of Car Parking Spots", main = "Histogram of Number of Car Parking Spots" )
+
+# Density plot
+car_den <- density(houses$Car)
+
+plot(car_den, lwd= 2, col= "orange")
+
+
+# Q-Q plot
+qqnorm(houses$Car)
+qqline(houses$Car, col = "orange", lwd = 2)
+
+# Skewness
+skewness(houses$Car)
+
+# Kurtosis
+kurtosis(houses$Car)
+```
+Similarly to previous variables, we can notice positive skewness and kurtosis values when analysing *Car* variable plots, meaning the data is asymmetrical.
+
+
+
+*Landsize*:
+```{r}
+# Histogram
+hist(houses$Landsize, xlab = "Land size", main = "Histogram of Land size" )
+
+# Density plot
+landsize_den <- density(houses$Landsize)
+
+plot(landsize_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$Landsize)
+qqline(houses$Landsize, col = "orange", lwd = 2)
+
+# Skewness
+skewness(houses$Landsize)
+
+
+# Kurtosis
+kurtosis(houses$Landsize)
+```
+What the visualisations plotted above show is that there are more properties with smaller land size. Also, it is worth mentioning that such distribution could be due to significant amount of values of zero in *Landsize*.
+
+
+*BuildingArea*:
+```{r}
+# Histogram
+hist(houses$BuildingArea, xlab = "Building Area", main = "Histogram of Building Area" )
+
+# Density plot
+buildArea_den <- density(na.omit(houses$BuildingArea)) # we need to omit missing values
+
+plot(buildArea_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$BuildingArea)
+qqline(houses$BuildingArea, col = "orange", lwd = 2)
+
+# Skewness 
+skewness(na.omit(houses$BuildingArea))
+
+# Kurtosis
+kurtosis(na.omit(houses$BuildingArea))
+```
+In case of analysing *BuildingArea*, similar traits to previous variables have been spotted, like positive skewness and kurtosis. Moreover, due to missing values, na.omit() function was used in order to compute measures of non-normality. Although some outliers have been spotted on the Q-Q plot, it is difficult to tell whether such values are errors. I suppose more information would be necessary in order to make a judgement and take an action.
+
+
+
+
+*YearBuilt*:
+```{r}
+# Histogram
+hist(houses$YearBuilt, xlab = "Year Built", main = "Histogram of Built Years" )
+
+# Density plot
+yearBuilt_den <- density(na.omit(houses$YearBuilt))
+
+plot(yearBuilt_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$YearBuilt)
+qqline(houses$YearBuilt, col = "orange", lwd = 2)
+
+# Skewness
+skewness(na.omit(houses$YearBuilt))
+
+
+# Kurtosis
+kurtosis(na.omit(houses$YearBuilt))
+```
+Variable *YearBuilt* have a small negative value of skewness and positive kurtosis, what could be seen on the density plot being skewed to the left and leptokurtic.
+
+
+*Distance*:
+```{r}
+# Histogram
+hist(houses$Distance, xlab = "Distance to the CBD", main = "Histogram of Distance" )
+
+# Density plot
+distance_den <- density(houses$Distance)
+
+plot(distance_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$Distance)
+qqline(houses$Distance, col = "orange", lwd = 2)
+
+# Skewness 
+skewness(houses$Distance)
+
+
+# Kurtosis
+kurtosis(houses$Distance)
+```
+From the plots it has been noticed that the majority of the properties are close to the Commercial Business District, so the *Distance* is not normally distributed. Although some outliers have been spotted on the Q-Q plot, they seem to follow the pattern of the sorted data, so they are considered to be interesting features of the variable, rather than errors in the data.
+
+
+
+*PropertyCount*:
+```{r}
+# Histogram
+hist(houses$PropertyCount, xlab = "Number of properties that exist in the suburb", main = "Histogram of Property Count" )
+
+# Density plot
+pc_den <- density(houses$PropertyCount)
+
+plot(pc_den, lwd= 2, col= "orange")
+
+# Q-Q plot
+qqnorm(houses$PropertyCount)
+qqline(houses$PropertyCount, col = "orange", lwd = 2)
+
+# Skewness
+skewness(houses$PropertyCount)
+
+# Kurtosis
+kurtosis(houses$PropertyCount)
+```
+The data in *PropertyCount* is not normally distributed, there is an apparent trend of properties having a comparingly small to medium number of properties that exist in the suburb. Same conclusion can be reached after analysing Q-Q plot and values of skewness and kurtosis.
+
+
+
+Checking for relationship between numeric and categorical variables
+
+```{r}
+ggplot(houses, aes(x=Type, y=Rooms)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Number of Rooms")
+```
+On average, type "u" houses have smaller amount of rooms, comparing to other properties.
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=Bathroom)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Number of Bathrooms")
+```
+On the box plot above we can notice some similarities regarding the number of bathrooms in townhouses and common houses. 
+
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=Bedrooms)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Number of Bedrooms")
+```
+Unit and duplex houses have smaller amount of bedrooms, comparing to the other properties.
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=Car)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Number of Car Parking Spots")
+```
+There does not seem to be any significant relationship between those variables.
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=Landsize)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Land size")
+```
+What could be noticed above is that the type "h" properties tend to have more land size than any other property.
+
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=BuildingArea)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Building Area")
+```
+There does not seem to be any relevant relationship, it can only be seen that the unit and duplex houses tend to be smaller, which were to be expected.
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=YearBuilt)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Year Built")
+```
+Townhouses tend to be built later than other types of houses, which could indicate some architecture trends, although regarding our research question it does not seem to provide the analysis with some useful insights.
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=Distance)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Distance")
+```
+There does not seem to be any relevant relationship between *Type* and *Distance*
+
+
+```{r}
+ggplot(houses, aes(x=Type, y=PropertyCount)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="House Type by Property Count")
+```
+What is interesting on the box plot is that unit and duplex houses have higher *PropertyCount* values, but it does not seem to be significant in the analysis.
+
+
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=Price)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Price")
+```
+As we can see on this box plot, the properties that have shorter distance to the Commercial Business District have higher prices. This is a relationship that could be investigated further in the next stages.
+
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=Rooms)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Box Plot of Urban Indicator by Number of Rooms")
+```
+Properties that are further away from the Commercial Business District tend to have more rooms, which could be an interesting feature to investigate.
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=Bedrooms)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Number of Bedrooms")
+```
+It is possible that properties usually have more bedrooms when being further away from the business district.
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=Bathroom)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Number of Bathrooms")
+```
+It could be that the properties not within 10 miles of the CBD usually have larger amount of bathrooms, although this relationship should be investigated in more detail.
+
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=Car)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Number of Car Parking Spots")
+```
+There does not seem to be any connection between being in the vicinity of the business district and number of parking spots.
+
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=Landsize)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Land size")
+```
+We can conclude from the plot above that the properties which are not in the vicinity of Commercial Business District tend to have larger land size.
+
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=BuildingArea)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Building Area")
+```
+Similarly to *Landsize*, properties that are not within 10 miles of the CBD usually have bigger building size.
+
+
+
+```{r}
+ggplot(houses, aes(x=urban.ind, y=YearBuilt)) +
+  geom_boxplot(fill="#8494FF") +
+  theme_classic() +
+  labs(title="Urban Indicator by Year Built")
+```
+In this case, the relationship between *urban.ind* and *YearBuilt* is not clear. Overall more properties that were built sooner are in the vicinity of CBD, although on average the houses that are further away are "younger".
+
+
+
+After analysing the continuous variables I have moved to analysing categorical variables.
+Since *ID* is just an identifier, it has been omitted in the analysis.
+
+
+First, I have plotted a frequency table for the factor *Type*.
+```{r}
+table(houses$Type)
+```
+
+We can see that the majority of properties are houses (cottage, villas, semi-detached, terrace); second largest group are unit and duplex houses. For better visualisation, bar chart has been plotted below.
+```{r}
+barplot(table(houses$Type), xlab = "House Type", ylab = "Frequency", main="Bar Chart of Type of the Houses", col = "blue")
+```
+
+
+Next categorical variable is *urban.ind*. 
+```{r}
+table(houses$urban.ind)
+```
+The values seem to be nearly equally divided in the data set, there is only 4 less houses within 10 miles of the Commercial Business District.
+
+
+
+```{r}
+barplot(table(houses$urban.ind), xlab = "Urban Indicator", ylab = "Frequency", main = "Bar chart of Urban Indicator", col = "blue")
+```
+
+
+
+
+In the next step, multivariate analysis has been performed. For that purpose I have created a subset of the data that contains only continuous variables.
+```{r}
+houses_num <- subset(houses, select = c(Price, Rooms, Bedrooms, Bathroom, Car, Landsize, BuildingArea, YearBuilt, Distance, PropertyCount))
+
+# Getting the structure of the newly created subset
+str(houses_num)
+```
+
+Next, I have used correlate() function in order to compute Pearson coefficient for the variables.
+```{r}
+correlate(houses_num, Price)
+```
+
+Given that the correlation coefficient of +0.3/-0.3 represents a moderate correlation and values of +0.5/-0.5 represent strong or large correlation, the variables that are considered to be significantly correlated with *Price* are: *Rooms*, *Bedrooms*, *BuildingArea* and *YearBuilt*.
+
+
+In the next step, I have checked the variables for multi-colinearity:
+```{r}
+cor(houses_num)
+```
+Analysing the output of the cor() function, there does not seem to be any multi-colinearity spotted, thus no further actions are necessary.
+
+
+
+
+## 2.3 Additional insights and issues
+
+As we could see, the data is not normally distributed, 9 out of 10 continuous variables have positive skewness. This could suggest undertaking some additional steps, like transformating the data (i.e. sqrt or log transformations). Also, it is worth mentioning that *BuildingArea* and *YearBuilt* have plenty of missing values, what could influence the analysis in a negative way. Eventually, it could be beneficial to build a model on both incomplete and imputated or trimmed data and compare the results.
+
+
+# 3. Modelling
+
+## 3.1 Build a model for property price
+
+Before building the model, the data has been investigated in terms of outliers and missing values. All necessary data cleaning operations have been performed, thus I have moved on to build a model for property price.
+
+First, I have plotted a regression tree in order to initially check which variables affect *Price* the most.
+```{r}
+houses.tree <- tree(houses$Price ~ houses$Bedrooms + houses$Bathroom + houses$Car + houses$Landsize + houses$BuildingArea + houses$YearBuilt + houses$Distance + houses$PropertyCount + houses$urban.ind, data = houses)
+
+plot(houses.tree)
+text(houses.tree)
+```
+From the regression tree I have noticed that *BuildingArea* is the most important factor, being the root node. *YearBuilt* seems to be the second most influential factor. There is also large amount of branches in the tree, what could indicate that the model initially could have good level of complexity.
+
+
+In the next step, I have built a maximal model for evaluating price by using all explanatory variables.
+```{r}
+houses_max_model.lm <- lm(houses$Price ~ houses$Bedrooms + houses$Bathroom + houses$Car + houses$Landsize + houses$BuildingArea + houses$YearBuilt + houses$Distance + houses$PropertyCount + houses$urban.ind, data = houses)
+
+houses_max_model.lm
+
+summary.lm(houses_max_model.lm)
+```
+From the model summary it can be seen that price prediction depends mostly on *Bathroom*, *Car*, *Bedrooms*, *BuildingArea*, *Landsize*, *Distance* and *YearBuilt*. Prediction is actually similar to the findings in (2.2). 
+
+
+Next, I have built a simplified, minimal adequate model: 
+```{r}
+houses_min_model.lm <- step(houses_max_model.lm)
+```
+
+
+```{r}
+final_model.lm <- lm(houses$Price ~ houses$Bathroom + houses$Car + houses$Bedrooms + houses$BuildingArea + houses$Landsize + houses$Distance + houses$YearBuilt)
+
+summary.lm(final_model.lm)
+```
+
+
+
+## 3.2 Critique model using relevant diagnostics
+
+Achieved model has a poor r-squared value of around 0.4, although due to the nature of the data provided it would be hard to achieve a better performance. Analysing the plots, normal Q-Q plot showed satisfying results.
+
+
+Next, I have ran the diagnostics of the model
+```{r}
+plot(final_model.lm)
+```
+
+
+## 3.3 Suggest improvements to your model
+
+What could be improved here is trying to preprocess the data again so we could compare the results when the missing values in the data would be removed or imputated using different methods. What also could be really beneficial is possibility to gather more data so then we would be able to remove the data without worrying too much about lack of data for building a prediction model.
+
+
+# 4. Extension work
+
+## 4.1 Model the likelihood of property being within 10 Miles of the commercial business district  (using the urban.ind variable provided).
+
+In order to model the likelihood of urban.ind being 1, I would start with inserting two categorical variables into the frequency table, and run chi-squared test
+
+```{r}
+table(houses$urban.ind, houses$Type)
+chisq.test(table(houses$urban.ind, houses$Type))
+```
+
+Once again, I have started with a maximal model, and used na.omit() to omit the NA values
+```{r}
+
+houses2 <- na.omit(houses)
+
+distance_model.glm <- glm(houses$urban.ind ~ houses$Rooms + houses$Type + houses$Price + houses$Bedrooms + houses$Bathroom + houses$Car + houses$Landsize + houses$BuildingArea + houses$YearBuilt + houses$Distance + houses$PropertyCount, family = "binomial")
+
+distance_model2.glm <- glm(houses2$urban.ind ~ houses2$Rooms + houses2$Type + houses2$Price + houses2$Bedrooms + houses2$Bathroom + houses2$Car + houses2$Landsize + houses2$BuildingArea + houses2$YearBuilt + houses2$Distance + houses2$PropertyCount, family = "binomial")
+
+summary(distance_model.glm)
+```
+
+
+
+Using stepwise selection now.
+```{r}
+step(distance_model.glm)
+```
+
+```{r}
+final_distance_model.glm <- glm(formula = houses2$urban.ind ~ houses2$Distance, family = "binomial")
+
+summary(final_distance_model.glm)
+```
+
+
+$$log(\frac{p}{1-p})= 1148.1 - 114.2 \times Distance \times 1$$
+
+
+```{r}
+exp(coef(final_distance_model.glm))
+```
+
+
+# References  
+
+*De Jonge, Edwin, and Mark Van Der Loo. 2013. An Introduction to Data Cleaning with r. https://cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf; Statistics Netherlands Heerlen.[Accessed: 7 August 2022]*
+
+*Shepperd, M., Modern Data Book (2021). https://bookdown.org/martin_shepperd/ModernDataBook/ [Accessed: 8 August 2022]*  
+
+*Grolemund, Garrett, and Hadley Wickham. 2018. “R for Data Science.”*
