@@ -20,7 +20,7 @@ The scope of the project includes:
 | ----------- | ----------- |
 | Rooms      | Number of rooms |
 | Type   | h - house, cottage, villa, semi, terrace; u - unit, duplex; t - townhouse |
-| Price   | Price (USD)        |
+| Price   | Price in dollars (AUS)        |
 | Bedrooms   | Number of bedrooms        |
 | Bathroom   | Number of bathrooms         |
 | Car   | Number of car parking spots        |
